@@ -1,5 +1,6 @@
 """
-GoldenCheetah Trend chart: cumulative distance.
+GoldenCheetah Trends chart: Cumulative Distance.
+Version 1.1: performance update to the original chart (1.0).
 
 Paste this file into a GoldenCheetah Python chart in Trends view.
 The chart has two views:
@@ -138,15 +139,15 @@ def season_value(seasons, index, key):
 
 
 def selected_metrics_and_seasons():
-    current_metrics = season_metrics()
-    current_season = GC.season()
-    compare_metrics = as_list(season_metrics(compare=True))
     compare_seasons = GC.season(compare=True)
+    # Inspect the inexpensive season metadata before fetching every activity's
+    # metrics. The normal view does not need a second copy of its metrics.
+    if season_value(compare_seasons, 1, "start") is not None:
+        compare_metrics = as_list(season_metrics(compare=True))
+        if len(compare_metrics) > 1:
+            return compare_metrics, compare_seasons
 
-    if len(compare_metrics) > 1:
-        return compare_metrics, compare_seasons
-
-    return [current_metrics], current_season
+    return [season_metrics()], GC.season()
 
 
 # Data Preparation
@@ -169,10 +170,12 @@ def metrics_to_frame(metrics):
     if frame.empty:
         return pd.DataFrame(columns=["date", "distance"])
 
-    frame["date"] = frame["date"].dt.date
+    # Aggregate with pandas' native datetime dtype before creating Python dates.
+    frame["date"] = frame["date"].dt.normalize()
     frame["distance"] = frame["distance"].clip(lower=0.0)
     frame = frame.groupby("date", as_index=False)["distance"].sum()
-    return frame.sort_values("date")
+    frame["date"] = frame["date"].dt.date
+    return frame
 
 
 def capped_end_date(start, end, data_end):
@@ -348,7 +351,10 @@ def palette_color(index):
 def trace_x_range(traces):
     x_values = []
     for trace in traces:
-        for value in trace.x if trace.x is not None else []:
+        # Our traces are ordered by date, so only their endpoints are needed.
+        if trace.x is None or len(trace.x) == 0:
+            continue
+        for value in (trace.x[0], trace.x[-1]):
             date_value = as_date(value)
             if date_value is not None:
                 x_values.append(date_value)
@@ -368,8 +374,9 @@ def trace_x_range(traces):
 def trace_y_range(traces):
     y_values = []
     for trace in traces:
-        for value in trace.y if trace.y is not None else []:
-            distance = as_float(value)
+        # Daily distances are nonnegative: the final cumulative value is max.
+        if trace.y is not None and len(trace.y):
+            distance = as_float(trace.y[-1])
             if distance is not None:
                 y_values.append(distance)
 
@@ -488,11 +495,13 @@ def build_year_traces(metrics):
         if not actual_dates:
             continue
 
-        x_values = [dt.date(2000, ride_date.month, ride_date.day) for ride_date in actual_dates]
+        # ISO strings avoid Plotly's per-point Python date serialization.
+        date_labels = [ride_date.isoformat() for ride_date in actual_dates]
+        x_values = ["2000" + date_label[4:] for date_label in date_labels]
         total = total_distance(cumulative)
         custom_data = [
-            (ride_date.isoformat(), daily_distance)
-            for ride_date, daily_distance in zip(actual_dates, daily)
+            (date_label, daily_distance)
+            for date_label, daily_distance in zip(date_labels, daily)
         ]
 
         traces.append(
@@ -527,14 +536,15 @@ def build_selected_traces(metrics_sets, seasons, frames=None):
 
         total = total_distance(cumulative)
         name = selected_range_label(index, seasons, frame)
+        date_labels = [ride_date.isoformat() for ride_date in actual_dates]
         custom_data = [
-            (ride_date.isoformat(), daily_distance)
-            for ride_date, daily_distance in zip(actual_dates, daily)
+            (date_label, daily_distance)
+            for date_label, daily_distance in zip(date_labels, daily)
         ]
 
         traces.append(
             go.Scatter(
-                x=actual_dates,
+                x=date_labels,
                 y=cumulative,
                 customdata=custom_data,
                 name=f"{name} ({label_total(total)} {DISTANCE_UNIT})",
@@ -776,17 +786,31 @@ def view_state_script():
   }});
 
   var index = buttonIndex(storedView());
-  if (index >= 0) {{
+  var menu = plot.layout.updatemenus && plot.layout.updatemenus[0];
+  if (index >= 0 && menu && index !== menu.active) {{
     applyButton(index);
   }}
 }}());
 """
 
 
+def local_plotly_bundle():
+    # Keep the installed bundle beside the HTML so refreshes can reuse it
+    # offline, rather than rewriting several megabytes into every page.
+    bundle_name = f"GC_cumulative_distance_plotly-{plotly.__version__}.min.js"
+    bundle_path = pathlib.Path(tempfile.gettempdir()) / bundle_name
+    try:
+        if not bundle_path.is_file() or bundle_path.stat().st_size == 0:
+            bundle_path.write_text(plotly.offline.get_plotlyjs(), encoding="utf-8")
+    except OSError:
+        return True  # Fall back to the original self-contained HTML.
+    return bundle_name
+
+
 def write_plot(fig):
     plot_html = plotly.io.to_html(
         fig,
-        include_plotlyjs=True,
+        include_plotlyjs=local_plotly_bundle(),
         full_html=True,
         div_id=PLOT_DIV_ID,
         post_script=view_state_script(),

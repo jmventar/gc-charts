@@ -11,4 +11,4 @@ Use the Python runtime configured in your GoldenCheetah install for syntax check
 <goldencheetah-python> -m py_compile cumulative_distance/cumulative_distance.py
 ```
 
-After changing `cumulative_distance/cumulative_distance.py`, re-export `cumulative_distance/cumulative distance.gchart` from GoldenCheetah and verify that the exported chart imports cleanly in the Trends view.
+After changing `cumulative_distance/cumulative_distance.py`, re-export `cumulative_distance/Cumulative Distance.gchart` from GoldenCheetah and verify that the exported chart imports cleanly in the Trends view.

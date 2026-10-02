@@ -5,7 +5,7 @@
 This repository contains GoldenCheetah Python chart scripts.
 
 - `cumulative_distance/cumulative_distance.py` is the main chart script. It is intended to be pasted into a GoldenCheetah Trends Python chart and rendered through `GC.webpage()`.
-- `cumulative_distance/cumulative distance.gchart` is the exported GoldenCheetah chart file users can import directly into the Trends view.
+- `cumulative_distance/Cumulative Distance.gchart` is the exported GoldenCheetah chart file users can import directly into the Trends view.
 - `README.md` documents installation and end-user configuration.
 - Generated files such as `__pycache__/` are local artifacts and should not be committed.
 
